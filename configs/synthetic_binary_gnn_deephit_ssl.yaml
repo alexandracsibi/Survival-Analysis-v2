@@ -1,0 +1,40 @@
+seed: 42
+device: auto
+
+dataset:
+  name: synthetic_binary
+  data_root: data
+
+graph:
+  edge_index_path: data/synthetic_binary/graphs/knn_k10_euclidean_edge_index.npy
+
+model:
+  name: GraphSAGEDeepHit
+  hidden_dims: [64, 32]
+  dropout: 0.2
+
+deephit:
+  n_time_bins: 50
+  binning: quantile
+  alpha: 1.0
+  beta: 0.0
+  sigma: 0.1
+
+training:
+  lr: 0.001
+  weight_decay: 0.0001
+  epochs: 50
+
+early_stopping:
+  enabled: true
+  monitor: val_cindex
+  mode: max
+  patience: 10
+  min_delta: 0.0001
+
+ssl:
+  enabled: true
+  method: static_teacher_pseudo_labeling
+  pseudo_weight: 0.2
+  min_confidence: 0.7
+  candidate: censored_train

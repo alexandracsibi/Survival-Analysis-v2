@@ -1,0 +1,26 @@
+seed: 42
+device: auto
+
+dataset:
+  name: SEER
+  data_root: data
+
+model:
+  name: GraphSAGECox
+  hidden_dims: [128, 64]
+  dropout: 0.2
+
+graph:
+  edge_index_path: data/SEER/graphs/knn_k10_euclidean_edge_index.npy
+
+training:
+  lr: 0.001
+  weight_decay: 0.0001
+  epochs: 50
+
+early_stopping:
+  enabled: true
+  monitor: val_cindex
+  mode: max
+  patience: 5
+  min_delta: 0.0001

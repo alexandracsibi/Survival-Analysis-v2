@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data - do not push large/private datasets
+data/
+*.csv
+*.parquet
+*.xlsx
+*.xls
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# Results / model outputs
+results/
+checkpoints/
+runs/
+wandb/
+mlruns/
+
+# Model files
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Logs
+*.log
+
+# Environment secrets
+.env
+.env.*
