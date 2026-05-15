@@ -52,3 +52,4 @@ mlruns/
 # Environment secrets
 .env
 .env.*
+*.tar.gz

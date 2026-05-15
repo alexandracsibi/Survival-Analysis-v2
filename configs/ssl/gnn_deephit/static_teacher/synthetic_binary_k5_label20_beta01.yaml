@@ -1,0 +1,60 @@
+seed: 42
+device: auto
+
+dataset:
+  name: synthetic_binary
+  data_root: data
+
+graph:
+  k: 5
+  metric: euclidean
+  include_self: false
+  make_undirected: true
+  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
+
+sampling:
+  enabled: true
+  batch_size: 4096
+  num_neighbors: [5, 5]
+
+model:
+  name: GraphSAGEDeepHit
+  hidden_dims: [64, 32]
+  dropout: 0.2
+
+deephit:
+  n_time_bins: 50
+  binning: quantile
+  alpha: 1.0
+  beta: 0.1
+  sigma: 0.1
+  max_rank_pairs: null
+
+training:
+  lr: 0.0005
+  weight_decay: 0.0001
+  epochs: 50
+
+early_stopping:
+  enabled: true
+  monitor: val_cindex
+  mode: max
+  patience: 5
+  min_delta: 0.0001
+
+ssl:
+  enabled: true
+  method: static_teacher_pseudo_labeling
+  teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5_label20.pt
+  init_student_from_teacher: true
+  pseudo_weight: 0.2
+  min_confidence: 0.1
+  candidate: censored_train
+
+semi_supervised:
+  enabled: true
+  strategy: event_fraction
+  labeled_event_fraction: 0.2
+  min_labeled_events: 0
+  keep_censored_in_supervised: true
+  seed: 42

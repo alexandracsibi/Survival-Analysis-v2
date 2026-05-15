@@ -11,3 +11,6 @@ tqdm
 torch
 torch-geometric
 lifelines
+--find-links https://data.pyg.org/whl/torch-2.4.0+cu124.html
+pyg-lib
+scikit-survival

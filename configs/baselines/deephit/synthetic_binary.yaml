@@ -6,15 +6,23 @@ dataset:
   data_root: data
 
 model:
-  name: DeepSurv
+  name: DeepHit
   hidden_dims: [64, 32]
   dropout: 0.2
+
+deephit:
+  n_time_bins: 50
+  binning: quantile
+  alpha: 1.0
+  beta: 0.0
+  sigma: 0.1
+  max_rank_pairs: null
 
 training:
   batch_size: 512
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 50
+  epochs: 30
 
 early_stopping:
   enabled: true
@@ -22,10 +30,3 @@ early_stopping:
   mode: max
   patience: 6
   min_delta: 0.0001
-
-graph:
-  type: knn
-  k: 10
-  metric: euclidean
-  include_self: false
-  make_undirected: true

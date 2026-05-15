@@ -5,8 +5,20 @@ dataset:
   name: synthetic_competing
   data_root: data
 
+graph:
+  k: 5
+  metric: euclidean
+  include_self: false
+  make_undirected: true
+  edge_index_path: data/synthetic_competing/graphs/knn_k5_euclidean_edge_index.npy
+
+sampling:
+  enabled: true
+  batch_size: 4096
+  num_neighbors: [5, 5]
+
 model:
-  name: DeepHit
+  name: GraphSAGEDeepHit
   hidden_dims: [64, 32]
   dropout: 0.2
 
@@ -14,17 +26,17 @@ deephit:
   n_time_bins: 50
   binning: quantile
   alpha: 1.0
-  beta: 0.0
+  beta: 0.1
   sigma: 0.1
+  max_rank_pairs: 256
 
 training:
-  batch_size: 512
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 3
+  epochs: 75
 
 early_stopping:
-  enabled: false
+  enabled: true
   monitor: val_mean_cindex
   mode: max
   patience: 5

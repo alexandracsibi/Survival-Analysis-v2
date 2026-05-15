@@ -53,18 +53,30 @@ class DeepHitLoss(nn.Module):
         integer time-bin index, 0..T-1
     """
 
-    def __init__(self, alpha=1.0, beta=0.2, sigma=0.1, eps=1e-8):
+    def __init__(
+        self,
+        alpha=1.0,
+        beta=0.2,
+        sigma=0.1,
+        eps=1e-8,
+        max_rank_pairs=None,
+    ):
         super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.sigma = sigma
         self.eps = eps
+        self.max_rank_pairs = max_rank_pairs
 
     def forward(self, logits, time_bin, event):
         probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
         probs = probs.view_as(logits)
 
         likelihood = self._likelihood_loss(probs, time_bin, event)
+        
+        if self.beta == 0.0:
+            return self.alpha * likelihood
+
         ranking = self._ranking_loss(probs, time_bin, event)
 
         return self.alpha * likelihood + self.beta * ranking
@@ -119,36 +131,43 @@ class DeepHitLoss(nn.Module):
         time_bin = time_bin.view(-1).long()
         event = event.view(-1).long()
 
-        observed_idx = torch.where(event > 0)[0]
-
-        if len(observed_idx) == 0:
+        observed_mask = event > 0
+        if observed_mask.sum() == 0:
             return probs.sum() * 0.0
 
-        total_loss = probs.sum() * 0.0
-        count = 0
+        cumulative_incidence = probs.cumsum(dim=2)  # [B, K, T]
 
-        cumulative_incidence = probs.cumsum(dim=2)
+        # For each observed i: get cause k and time t_i
+        obs_idx = torch.where(observed_mask)[0]          # [M]
+        if self.max_rank_pairs is not None and len(obs_idx) > self.max_rank_pairs:
+            perm = torch.randperm(len(obs_idx), device=probs.device)
+            obs_idx = obs_idx[perm[:self.max_rank_pairs]]
+        k = event[obs_idx] - 1                           # [M]
+        t_i = time_bin[obs_idx].clamp(0, T - 1)         # [M]
 
-        for i in observed_idx:
-            k = event[i] - 1
-            t_i = time_bin[i].clamp(0, T - 1)
+        # F_i: CIF at (k, t_i) for each observed sample — [M]
+        F_i = cumulative_incidence[obs_idx, k, t_i]
 
-            # Compare sample i only with samples that survived longer.
-            comparable = time_bin > t_i
+        # Build pairwise comparable mask: j survives longer than i
+        # time_bin: [B], t_i: [M] → comparable: [M, B]
+        comparable = time_bin.unsqueeze(0) > t_i.unsqueeze(1)  # [M, B]
 
-            if comparable.sum() == 0:
-                continue
+        # F_j: CIF at cause k, time t_i for all j — [M, B]
+        # cumulative_incidence[:, k, t_i] needs care: k and t_i vary per i
+        # index: for each i, cause k[i], time t_i[i], all j
+        F_j = cumulative_incidence[:, k, :]          # [B, M, T]
+        F_j = F_j.permute(1, 0, 2)                  # [M, B, T]
+        t_i_expand = t_i.view(-1, 1, 1).expand(-1, B, 1)  # [M, B, 1]
+        F_j = F_j.gather(2, t_i_expand).squeeze(2)  # [M, B]
 
-            F_i = cumulative_incidence[i, k, t_i]
-            F_j = cumulative_incidence[comparable, k, t_i]
+        # Ranking loss: exp(-(F_i - F_j) / sigma) over comparable pairs
+        diff = -(F_i.unsqueeze(1) - F_j) / self.sigma  # [M, B]
+        diff = torch.clamp(diff, min=-50.0, max=50.0)
 
-            diff = -(F_i - F_j) / self.sigma
-            diff = torch.clamp(diff, min=-50.0, max=50.0)
+        # Mask out non-comparable pairs
+        diff = diff * comparable.float()
+        n_comparable = comparable.float().sum(dim=1).clamp(min=1.0)  # [M]
 
-            total_loss = total_loss + torch.exp(diff).mean()
-            count += 1
+        loss_per_obs = (torch.exp(diff) * comparable.float()).sum(dim=1) / n_comparable  # [M]
 
-        if count == 0:
-            return probs.sum() * 0.0
-
-        return total_loss / count
+        return loss_per_obs.mean()

@@ -16,8 +16,16 @@ from src.datasets.loaders import load_dataset, add_time_bins
 from src.utils import load_config, set_seed, get_device
 from src.datasets.graph_dataset import make_graph_survival_data
 from src.models.gnn_models import GraphSAGECoxModel, GraphSAGEDeepHitModel
-from src.training.gnn_runner import train_gnn_cox, train_gnn_deephit
-from src.training.ssl_runner import train_gnn_deephit_ssl_static_teacher
+from src.training.gnn_runner import (
+    train_gnn_cox,
+    train_gnn_cox_sampled,
+    train_gnn_deephit,
+    train_gnn_deephit_sampled,
+)
+from src.training.ssl_runner import (
+    train_gnn_deephit_ssl_static_teacher,
+    train_gnn_deephit_ssl_static_teacher_sampled,
+)
 
 
 def main():
@@ -29,6 +37,8 @@ def main():
 
     set_seed(config["seed"])
     device = get_device(config["device"])
+
+    print("Using device:", device)
 
     ds = load_dataset(
         name=config["dataset"]["name"],
@@ -99,15 +109,32 @@ def main():
             dropout=config["model"]["dropout"],
         )
 
-        model, history = train_gnn_cox(
-            model=model,
-            data=graph_data,
-            device=device,
-            lr=config["training"]["lr"],
-            weight_decay=config["training"]["weight_decay"],
-            epochs=config["training"]["epochs"],
-            early_stopping=config.get("early_stopping"),
-        )
+        sampling_config = config.get("sampling", {})
+        use_sampling = sampling_config.get("enabled", False)
+
+        if use_sampling:
+            model, history = train_gnn_cox_sampled(
+                model=model,
+                data=graph_data,
+                device=device,
+                lr=config["training"]["lr"],
+                weight_decay=config["training"]["weight_decay"],
+                epochs=config["training"]["epochs"],
+                batch_size=sampling_config.get("batch_size", 4096),
+                num_neighbors=sampling_config.get("num_neighbors", [5, 5]),
+                early_stopping=config.get("early_stopping"),
+                semi_supervised=config.get("semi_supervised"),
+            )
+        else:
+            model, history = train_gnn_cox(
+                model=model,
+                data=graph_data,
+                device=device,
+                lr=config["training"]["lr"],
+                weight_decay=config["training"]["weight_decay"],
+                epochs=config["training"]["epochs"],
+                early_stopping=config.get("early_stopping"),
+            )
 
     elif model_name == "GraphSAGEDeepHit":
         ds = add_time_bins(
@@ -132,45 +159,107 @@ def main():
         )
 
         if config.get("ssl", {}).get("enabled", False):
-            model, history, pseudo = train_gnn_deephit_ssl_static_teacher(
-                model=model,
-                data=graph_data,
-                optimizer=torch.optim.Adam(
-                    model.parameters(),
-                    lr=config["training"]["lr"],
-                    weight_decay=config["training"]["weight_decay"],
-                ),
-                n_epochs=config["training"]["epochs"],
-                alpha=config["deephit"]["alpha"],
-                beta=config["deephit"]["beta"],
-                sigma=config["deephit"]["sigma"],
-                pseudo_weight=config["ssl"]["pseudo_weight"],
-                min_confidence=config["ssl"]["min_confidence"],
-                patience=config["early_stopping"]["patience"],
-                min_delta=config["early_stopping"]["min_delta"],
-                device=device,
-            )
-        else:
-            model, history = train_gnn_deephit(
-                model=model,
-                data=graph_data,
-                device=device,
+            sampling_config = config.get("sampling", {})
+            use_sampling = sampling_config.get("enabled", False)
+
+            teacher_checkpoint = config["ssl"].get("teacher_checkpoint")
+
+            if teacher_checkpoint is not None and config["ssl"].get("init_student_from_teacher", True):
+                teacher_checkpoint_path = PROJECT_ROOT / teacher_checkpoint
+                state_dict = torch.load(teacher_checkpoint_path, map_location="cpu", weights_only=True)
+                model.load_state_dict(state_dict)
+            else:
+                teacher_checkpoint_path = PROJECT_ROOT / teacher_checkpoint if teacher_checkpoint is not None else None
+
+            optimizer = torch.optim.Adam(
+                model.parameters(),
                 lr=config["training"]["lr"],
                 weight_decay=config["training"]["weight_decay"],
-                epochs=config["training"]["epochs"],
-                alpha=config["deephit"]["alpha"],
-                beta=config["deephit"]["beta"],
-                sigma=config["deephit"]["sigma"],
-                early_stopping=config.get("early_stopping"),
             )
+
+            if use_sampling:
+                model, history, pseudo = train_gnn_deephit_ssl_static_teacher_sampled(
+                    model=model,
+                    data=graph_data,
+                    optimizer=optimizer,
+                    n_epochs=config["training"]["epochs"],
+                    batch_size=sampling_config.get("batch_size", 4096),
+                    num_neighbors=sampling_config.get("num_neighbors", [5, 5]),
+                    alpha=config["deephit"]["alpha"],
+                    beta=config["deephit"]["beta"],
+                    sigma=config["deephit"]["sigma"],
+                    pseudo_weight=config["ssl"]["pseudo_weight"],
+                    min_confidence=config["ssl"]["min_confidence"],
+                    teacher_checkpoint_path=teacher_checkpoint_path,
+                    semi_supervised=config.get("semi_supervised"),
+                    patience=config["early_stopping"]["patience"],
+                    min_delta=config["early_stopping"]["min_delta"],
+                    device=device,
+                )
+            else:
+                model, history, pseudo = train_gnn_deephit_ssl_static_teacher(
+                    model=model,
+                    data=graph_data,
+                    optimizer=optimizer,
+                    n_epochs=config["training"]["epochs"],
+                    alpha=config["deephit"]["alpha"],
+                    beta=config["deephit"]["beta"],
+                    sigma=config["deephit"]["sigma"],
+                    pseudo_weight=config["ssl"]["pseudo_weight"],
+                    min_confidence=config["ssl"]["min_confidence"],
+                    teacher_checkpoint_path=teacher_checkpoint_path,
+                    patience=config["early_stopping"]["patience"],
+                    min_delta=config["early_stopping"]["min_delta"],
+                    device=device,
+                )
+        else:
+            sampling_config = config.get("sampling", {})
+            use_sampling = sampling_config.get("enabled", False)
+
+            if use_sampling:
+                model, history = train_gnn_deephit_sampled(
+                    model=model,
+                    data=graph_data,
+                    device=device,
+                    lr=config["training"]["lr"],
+                    weight_decay=config["training"]["weight_decay"],
+                    epochs=config["training"]["epochs"],
+                    batch_size=sampling_config.get("batch_size", 4096),
+                    num_neighbors=sampling_config.get("num_neighbors", [10, 10]),
+                    alpha=config["deephit"]["alpha"],
+                    beta=config["deephit"]["beta"],
+                    sigma=config["deephit"]["sigma"],
+                    early_stopping=config.get("early_stopping"),
+                    semi_supervised=config.get("semi_supervised"),
+                )
+            else:
+                model, history = train_gnn_deephit(
+                    model=model,
+                    data=graph_data,
+                    device=device,
+                    lr=config["training"]["lr"],
+                    weight_decay=config["training"]["weight_decay"],
+                    epochs=config["training"]["epochs"],
+                    alpha=config["deephit"]["alpha"],
+                    beta=config["deephit"]["beta"],
+                    sigma=config["deephit"]["sigma"],
+                    early_stopping=config.get("early_stopping"),
+                )
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
-    experiment_name = Path(args.config).stem
+    config_path = Path(args.config)
+    relative_config_path = config_path.with_suffix("").relative_to("configs")
+
+    experiment_name = relative_config_path.name
+    experiment_group = relative_config_path.parent
 
     results_dir = PROJECT_ROOT / "results"
-    checkpoint_dir = results_dir / "checkpoints"
-    table_dir = results_dir / "tables"
+    checkpoint_dir = results_dir / "checkpoints" / experiment_group
+    table_dir = results_dir / "tables" / experiment_group
+
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    table_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     table_dir.mkdir(parents=True, exist_ok=True)

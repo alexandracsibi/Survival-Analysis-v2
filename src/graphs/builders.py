@@ -29,7 +29,6 @@ def build_knn_graph(
     if k >= n_nodes:
         raise ValueError(f"k={k} must be smaller than number of nodes={n_nodes}.")
 
-    # If we do not want self-loops, ask for k+1 neighbors because nearest neighbor is usually itself.
     n_neighbors = k if include_self else k + 1
 
     nbrs = NearestNeighbors(
@@ -38,26 +37,27 @@ def build_knn_graph(
         algorithm="auto",
         n_jobs=-1,
     )
-
     nbrs.fit(X)
-    distances, indices = nbrs.kneighbors(X)
 
-    edges = []
+    _, indices = nbrs.kneighbors(X)
 
-    for src in range(n_nodes):
-        for j, dst in enumerate(indices[src]):
-            if not include_self and src == dst:
-                continue
+    src = np.repeat(np.arange(n_nodes), n_neighbors)
+    dst = indices.reshape(-1)
 
-            edges.append((src, int(dst)))
+    if not include_self:
+        keep = src != dst
+        src = src[keep]
+        dst = dst[keep]
 
-    edge_index = np.array(edges, dtype=np.int64).T
+        # keep exactly first k non-self neighbors per node
+        src = src.reshape(n_nodes, -1)[:, :k].reshape(-1)
+        dst = dst.reshape(n_nodes, -1)[:, :k].reshape(-1)
+
+    edge_index = np.stack([src, dst], axis=0).astype(np.int64)
 
     if make_undirected:
         reverse_edge_index = edge_index[[1, 0], :]
         edge_index = np.concatenate([edge_index, reverse_edge_index], axis=1)
-
-        # Remove duplicate edges
         edge_index = np.unique(edge_index, axis=1)
 
     return edge_index

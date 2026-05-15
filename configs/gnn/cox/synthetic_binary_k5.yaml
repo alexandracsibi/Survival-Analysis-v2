@@ -5,18 +5,27 @@ dataset:
   name: synthetic_binary
   data_root: data
 
+graph:
+  k: 5
+  metric: euclidean
+  include_self: false
+  make_undirected: true
+  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
+
+sampling:
+  enabled: true
+  batch_size: 4096
+  num_neighbors: [5, 5]
+
 model:
   name: GraphSAGECox
   hidden_dims: [128, 64]
   dropout: 0.2
 
-graph:
-  edge_index_path: data/synthetic_binary/graphs/knn_k10_euclidean_edge_index.npy
-
 training:
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 50
+  epochs: 75
 
 early_stopping:
   enabled: true

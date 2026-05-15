@@ -6,7 +6,16 @@ dataset:
   data_root: data
 
 graph:
+  k: 10
+  metric: euclidean
+  include_self: false
+  make_undirected: true
   edge_index_path: data/synthetic_binary/graphs/knn_k10_euclidean_edge_index.npy
+
+sampling:
+  enabled: true
+  batch_size: 4096
+  num_neighbors: [5, 5]
 
 model:
   name: GraphSAGEDeepHit
@@ -17,16 +26,17 @@ deephit:
   n_time_bins: 50
   binning: quantile
   alpha: 1.0
-  beta: 0.0
+  beta: 0.1
   sigma: 0.1
+  max_rank_pairs: null
 
 training:
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 5
+  epochs: 75
 
 early_stopping:
-  enabled: false
+  enabled: true
   monitor: val_cindex
   mode: max
   patience: 5

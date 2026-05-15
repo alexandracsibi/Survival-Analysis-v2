@@ -2,7 +2,7 @@ seed: 42
 device: auto
 
 dataset:
-  name: SEER
+  name: MNB
   data_root: data
 
 model:
@@ -14,18 +14,19 @@ deephit:
   n_time_bins: 50
   binning: quantile
   alpha: 1.0
-  beta: 0.2
+  beta: 0.0
   sigma: 0.1
+  max_rank_pairs: 128
 
 training:
-  batch_size: 256 # 1024
+  batch_size: 1024
   lr: 0.001
   weight_decay: 0.0001
   epochs: 1
 
 early_stopping:
   enabled: false
-  monitor: val_cindex
+  monitor: val_mean_cindex
   mode: max
   patience: 5
   min_delta: 0.0001

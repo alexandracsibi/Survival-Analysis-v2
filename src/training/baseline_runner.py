@@ -136,6 +136,48 @@ def predict_deephit_event_risk(model, X, event_id, device, batch_size=4096):
 
     return np.concatenate(risks)
 
+def predict_deephit_event_risks_all(model, X, device, batch_size=4096):
+    """
+    Predict event-specific DeepHit risks for all event channels in one model pass.
+
+    Returns:
+        risks: [N, K]
+        risk[:, k] = - expected event time for event channel k
+    """
+    model.eval()
+
+    all_risks = []
+
+    loader = DataLoader(
+        torch.tensor(X, dtype=torch.float32),
+        batch_size=batch_size,
+        shuffle=False,
+    )
+
+    with torch.no_grad():
+        for xb in loader:
+            xb = xb.to(device)
+
+            logits = model(xb)  # [B, K, T]
+            probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
+            probs = probs.view_as(logits)
+
+            B, K, T = probs.shape
+
+            time_bins = torch.arange(
+                T,
+                device=device,
+                dtype=torch.float32,
+            )
+
+            expected_time = (probs * time_bins.view(1, 1, T)).sum(dim=2)  # [B, K]
+
+            risk = -expected_time  # [B, K]
+
+            all_risks.append(risk.cpu().numpy())
+
+    return np.concatenate(all_risks, axis=0)
+
 def train_deepsurv(
     model,
     train_data,
@@ -271,11 +313,12 @@ def train_deephit(
     alpha=1.0,
     beta=0.2,
     sigma=0.1,
+    max_rank_pairs=None,
     early_stopping=None,
 ):
     model = model.to(device)
 
-    loss_fn = DeepHitLoss(alpha=alpha, beta=beta, sigma=sigma)
+    loss_fn = DeepHitLoss(alpha=alpha, beta=beta, sigma=sigma, max_rank_pairs=max_rank_pairs,)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -353,13 +396,15 @@ def train_deephit(
             # Competing-risk DeepHit validation
             event_cindices = []
 
+            val_risks_all = predict_deephit_event_risks_all(
+                model=model,
+                X=val_data["X"],
+                device=device,
+            )
+
             for event_id in event_ids:
-                val_risk = predict_deephit_event_risk(
-                    model=model,
-                    X=val_data["X"],
-                    event_id=event_id,
-                    device=device,
-                )
+                event_channel = event_id - 1
+                val_risk = val_risks_all[:, event_channel]
 
                 score = event_specific_c_index(
                     time=val_data["time"],
