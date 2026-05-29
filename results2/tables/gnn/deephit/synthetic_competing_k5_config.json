@@ -1,0 +1,51 @@
+{
+  "seed": 42,
+  "device": "auto",
+  "dataset": {
+    "name": "synthetic_competing",
+    "data_root": "data"
+  },
+  "model": {
+    "name": "GraphSAGEDeepHit",
+    "hidden_dims": [
+      128,
+      64
+    ],
+    "dropout": 0.2
+  },
+  "deephit": {
+    "n_time_bins": 50,
+    "binning": "quantile",
+    "alpha": 1.0,
+    "beta": 0.0,
+    "sigma": 0.1,
+    "max_rank_pairs": null
+  },
+  "graph": {
+    "k": 5,
+    "metric": "euclidean",
+    "include_self": false,
+    "make_undirected": true,
+    "edge_index_path": "data/synthetic_competing/graphs/knn_k5_euclidean_edge_index.npy",
+    "preprocessing_note": "Graph is built from the prepared synthetic_competing feature matrix loaded from X_train, X_val, and X_test. These arrays are already in the final prepared feature format. The graph uses only X features and no labels, event times, outcomes, or model predictions.\n",
+    "included_feature_groups": [
+      "synthetic numerical features"
+    ],
+    "dropped_feature_groups": null
+  },
+  "sampling": {
+    "enabled": false
+  },
+  "training": {
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "epochs": 50
+  },
+  "early_stopping": {
+    "enabled": true,
+    "monitor": "val_mean_cindex",
+    "mode": "max",
+    "patience": 6,
+    "min_delta": 0.0001
+  }
+}

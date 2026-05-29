@@ -1,0 +1,29 @@
+{
+  "seed": 42,
+  "device": "auto",
+  "dataset": {
+    "name": "synthetic_binary",
+    "data_root": "data"
+  },
+  "model": {
+    "name": "DeepSurv",
+    "hidden_dims": [
+      128,
+      64
+    ],
+    "dropout": 0.2
+  },
+  "training": {
+    "batch_size": 4096,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "epochs": 50
+  },
+  "early_stopping": {
+    "enabled": true,
+    "monitor": "val_cindex",
+    "mode": "max",
+    "patience": 6,
+    "min_delta": 0.0001
+  }
+}
