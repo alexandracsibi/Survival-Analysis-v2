@@ -8,9 +8,13 @@ ipykernel
 pyyaml
 joblib
 tqdm
-torch
+
+torch==2.11.0
 torch-geometric
-lifelines
---find-links https://data.pyg.org/whl/torch-2.4.0+cu124.html
+
+--find-links https://data.pyg.org/whl/torch-2.11.0+cu130.html
 pyg-lib
+torch-sparse
+
+lifelines
 scikit-survival

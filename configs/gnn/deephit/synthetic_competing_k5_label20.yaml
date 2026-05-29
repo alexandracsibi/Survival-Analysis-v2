@@ -2,7 +2,7 @@ seed: 42
 device: auto
 
 dataset:
-  name: synthetic_binary
+  name: synthetic_competing
   data_root: data
 
 model:
@@ -23,10 +23,10 @@ graph:
   metric: euclidean
   include_self: false
   make_undirected: true
-  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
+  edge_index_path: data/synthetic_competing/graphs/knn_k5_euclidean_edge_index.npy
 
   preprocessing_note: >
-    Graph is built from the prepared synthetic_binary feature matrix loaded from
+    Graph is built from the prepared synthetic_competing feature matrix loaded from
     X_train, X_val, and X_test. These arrays are already in the final prepared
     feature format. The graph uses only X features and no labels, event times,
     outcomes, or model predictions.
@@ -37,23 +37,7 @@ graph:
   dropped_feature_groups: null
 
 sampling:
-  enabled: true
-  batch_size: 4096
-  num_neighbors: [5, 5]
-
-ssl:
-  enabled: true
-  method: static_teacher_pseudo_labeling
-  teacher_mode: static
-  pseudo_label_update: once
-  enforce_censoring_consistency: true
-
-  teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5_label20.pt
-  init_student_from_teacher: true
-
-  pseudo_weight: 0.2
-  min_confidence: 0.1
-  candidate: censored_unlabeled_train
+  enabled: false
 
 training:
   lr: 0.001
@@ -62,7 +46,7 @@ training:
 
 early_stopping:
   enabled: true
-  monitor: val_cindex
+  monitor: val_mean_cindex
   mode: max
   patience: 6
   min_delta: 0.0001

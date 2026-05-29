@@ -2,7 +2,7 @@ seed: 42
 device: auto
 
 dataset:
-  name: SEER
+  name: synthetic_binary
   data_root: data
 
 model:
@@ -20,32 +20,29 @@ deephit:
 
 graph:
   k: 5
-  metric: euclidean
+  metric: cosine
   include_self: false
   make_undirected: true
-  edge_index_path: data/SEER/graphs/knn_k5_euclidean_edge_index.npy
+  edge_index_path: data/synthetic_binary/graphs/knn_k5_cosine_edge_index.npy
 
   preprocessing_note: >
-    Graph is built from the prepared SEER feature matrix loaded from X_train,
-    X_val, and X_test after preprocessing/scaling/encoding. The graph uses only
-    X features and no labels, event times, outcomes, or model predictions.
+    Graph is built from the prepared synthetic_binary feature matrix loaded from
+    X_train, X_val, and X_test. These arrays are already in the final prepared
+    feature format. The graph uses only X features and no labels, event times,
+    outcomes, or model predictions.
 
   included_feature_groups:
-    - numeric features
-    - missing-indicator features
-    - categorical encoded features
+    - synthetic numerical features
 
   dropped_feature_groups: null
 
 sampling:
-  enabled: true
-  batch_size: 8192
-  num_neighbors: [10, 10]
+  enabled: false
 
 training:
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 50
+  epochs: 75
 
 early_stopping:
   enabled: true

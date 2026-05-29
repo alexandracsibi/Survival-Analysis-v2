@@ -242,12 +242,16 @@ def time_dependent_auc(
     test_event,
     risk_score,
     times=None,
-    n_times=5,
+    n_times=10,
 ):
     """
     Cumulative/dynamic time-dependent AUC.
 
     Higher risk_score means higher event risk.
+
+    The evaluation times are filtered to avoid invalid IPCW calculations,
+    especially when the censoring survival function becomes zero at late
+    follow-up times.
     """
     train_time = np.asarray(train_time, dtype=float)
     train_event = np.asarray(train_event).astype(int)
@@ -259,13 +263,15 @@ def time_dependent_auc(
     if times is None:
         times = choose_eval_times(train_time, train_event, n_times=n_times)
 
+    times = np.asarray(times, dtype=float)
+
     if len(times) == 0:
         return {}, np.nan
 
-    max_test_time = test_time.max()
     min_test_time = test_time.min()
+    max_test_time = test_time.max()
 
-    times = np.asarray(times, dtype=float)
+    # sksurv requires evaluation times to be inside the test follow-up range.
     times = times[(times > min_test_time) & (times < max_test_time)]
 
     if len(times) == 0:
@@ -274,12 +280,46 @@ def time_dependent_auc(
     survival_train = make_survival_array(train_time, train_event)
     survival_test = make_survival_array(test_time, test_event)
 
-    auc_values, mean_auc = cumulative_dynamic_auc(
-        survival_train,
-        survival_test,
-        risk_score,
-        times,
+    # Filter out evaluation times where the censoring survival function is zero.
+    # This prevents cumulative_dynamic_auc from failing on late unsupported times.
+    from sksurv.nonparametric import kaplan_meier_estimator
+
+    censor_event_train = train_event == 0
+    censor_times, censor_surv = kaplan_meier_estimator(
+        censor_event_train,
+        train_time,
     )
+
+    valid_times = []
+    for t in times:
+        idx = np.searchsorted(censor_times, t, side="right") - 1
+
+        if idx < 0:
+            censor_prob = 1.0
+        else:
+            censor_prob = censor_surv[idx]
+
+        if censor_prob > 1e-8:
+            valid_times.append(t)
+
+    times = np.asarray(valid_times, dtype=float)
+
+    if len(times) == 0:
+        return {}, np.nan
+
+    try:
+        auc_values, mean_auc = cumulative_dynamic_auc(
+            survival_train,
+            survival_test,
+            risk_score,
+            times,
+        )
+    except ValueError as e:
+        # Final safety fallback. This should rarely happen after filtering,
+        # but keeps evaluation from crashing if a dataset has unsupported times.
+        if "censoring survival function is zero" in str(e):
+            return {float(t): np.nan for t in times}, np.nan
+        raise
 
     auc_by_time = {
         float(t): float(a)

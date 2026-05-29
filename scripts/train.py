@@ -67,6 +67,15 @@ def main():
         )
 
     elif model_name == "DeepHit":
+        event_mode = config.get("dataset", {}).get("event_mode")
+
+        if event_mode == "binary_any_event":
+            for split in ["train", "val", "test"]:
+                if split in ds:
+                    ds[split]["event"] = (ds[split]["event"] != 0).astype("int64")
+
+            ds["n_events"] = 1
+
         ds = add_time_bins(
             ds,
             n_time_bins=config["deephit"]["n_time_bins"],
@@ -93,6 +102,7 @@ def main():
             alpha=config["deephit"]["alpha"],
             beta=config["deephit"]["beta"],
             sigma=config["deephit"]["sigma"],
+            max_rank_pairs=config["deephit"].get("max_rank_pairs"),
             early_stopping=config.get("early_stopping"),
         )
     elif model_name == "GraphSAGECox":

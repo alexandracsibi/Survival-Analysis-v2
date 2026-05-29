@@ -20,10 +20,10 @@ deephit:
 
 graph:
   k: 5
-  metric: euclidean
+  metric: cosine
   include_self: false
   make_undirected: true
-  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
+  edge_index_path: data/synthetic_binary/graphs/knn_k5_cosine_edge_index.npy
 
   preprocessing_note: >
     Graph is built from the prepared synthetic_binary feature matrix loaded from
@@ -37,23 +37,7 @@ graph:
   dropped_feature_groups: null
 
 sampling:
-  enabled: true
-  batch_size: 4096
-  num_neighbors: [5, 5]
-
-ssl:
-  enabled: true
-  method: static_teacher_pseudo_labeling
-  teacher_mode: static
-  pseudo_label_update: once
-  enforce_censoring_consistency: true
-
-  teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5_label20.pt
-  init_student_from_teacher: true
-
-  pseudo_weight: 0.2
-  min_confidence: 0.1
-  candidate: censored_unlabeled_train
+  enabled: false
 
 training:
   lr: 0.001
