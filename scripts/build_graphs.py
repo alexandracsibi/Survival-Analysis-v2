@@ -71,18 +71,47 @@ def main():
 
     np.save(edge_path, edge_index)
 
+    feature_names = ds.get("feature_names", None)
+
+    preprocessing_note = graph_config.get(
+        "preprocessing_note",
+        "Graph is built from the prepared X_train/X_val/X_test arrays loaded by load_dataset. "
+        "These arrays are assumed to already contain the final preprocessed/scaled feature representation."
+    )
+
     metadata = {
         "dataset": dataset_name,
         "graph_name": graph_name,
+
+        "graph_type": "knn_feature_similarity",
         "k": k,
         "metric": metric,
         "include_self": include_self,
         "make_undirected": make_undirected,
+
+        "transductive": True,
+        "transductive_note": (
+            "Graph nodes include train, validation, and test samples. "
+            "Only input features X are used for graph construction; labels, event times, "
+            "outcomes, and model predictions are not used."
+        ),
+
+        "preprocessing_note": preprocessing_note,
+        "feature_count": int(X_all.shape[1]),
+        "feature_names": feature_names,
+
+        "included_feature_groups": graph_config.get("included_feature_groups"),
+        "dropped_feature_groups": graph_config.get("dropped_feature_groups"),
+
         "n_nodes": int(X_all.shape[0]),
         "n_edges": int(edge_index.shape[1]),
+
         "n_train": int(n_train),
         "n_val": int(n_val),
         "n_test": int(n_test),
+
+        "node_order": "train_then_val_then_test",
+
         "train_idx_start": int(train_idx[0]),
         "train_idx_end": int(train_idx[-1]),
         "val_idx_start": int(val_idx[0]),

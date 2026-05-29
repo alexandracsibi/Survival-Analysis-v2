@@ -29,6 +29,8 @@ def generate_deephit_pseudo_labels(
     logits: torch.Tensor,
     candidate_mask: Optional[torch.Tensor] = None,
     min_confidence: float = 0.7,
+    censor_time_bin: Optional[torch.Tensor] = None,
+    enforce_censoring_consistency: bool = True,
 ) -> PseudoLabelResult:
     """
     Generate soft pseudo-labels from DeepHit teacher logits.
@@ -37,6 +39,10 @@ def generate_deephit_pseudo_labels(
     - sum probabilities over time
     - choose most likely event
     - take max probability over time for that event
+
+    Censoring consistency:
+    - for censored samples, only keep pseudo-labels where:
+        predicted event time bin > censoring time bin
     """
     probs = deephit_logits_to_probs(logits)
 
@@ -57,6 +63,17 @@ def generate_deephit_pseudo_labels(
             )
         candidate_mask = candidate_mask.to(device=logits.device, dtype=torch.bool)
         selected_mask = selected_mask & candidate_mask
+
+    if enforce_censoring_consistency and censor_time_bin is not None:
+        if censor_time_bin.shape[0] != n:
+            raise ValueError(
+                f"censor_time_bin must have shape [N], got {tuple(censor_time_bin.shape)}"
+            )
+
+        censor_time_bin = censor_time_bin.to(device=logits.device, dtype=torch.long)
+
+        censor_consistent_mask = pred_time_bin > censor_time_bin
+        selected_mask = selected_mask & censor_consistent_mask
 
     return PseudoLabelResult(
         pseudo_probs=probs.detach(),
@@ -122,13 +139,14 @@ def deephit_pseudo_label_loss(
     return loss
 
 
-@torch.no_grad()
+torch.no_grad()
 def generate_pseudo_labels_from_model(
     model: torch.nn.Module,
     data,
     candidate_mask: Optional[torch.Tensor] = None,
     min_confidence: float = 0.7,
     device: Optional[torch.device] = None,
+    enforce_censoring_consistency: bool = True,
 ) -> PseudoLabelResult:
     """Generate DeepHit pseudo-labels from a GNN teacher model."""
     was_training = model.training
@@ -140,10 +158,21 @@ def generate_pseudo_labels_from_model(
 
     logits = model(data.x, data.edge_index)
 
+    censor_time_bin = None
+    if enforce_censoring_consistency:
+        if not hasattr(data, "time_bin"):
+            raise ValueError(
+                "Censoring-consistency filtering requires data.time_bin, "
+                "but the graph data object does not contain it."
+            )
+        censor_time_bin = data.time_bin
+
     pseudo = generate_deephit_pseudo_labels(
         logits=logits,
         candidate_mask=candidate_mask,
         min_confidence=min_confidence,
+        censor_time_bin=censor_time_bin,
+        enforce_censoring_consistency=enforce_censoring_consistency,
     )
 
     if was_training:

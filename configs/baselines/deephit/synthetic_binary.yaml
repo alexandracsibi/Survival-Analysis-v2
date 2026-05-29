@@ -7,7 +7,7 @@ dataset:
 
 model:
   name: DeepHit
-  hidden_dims: [64, 32]
+  hidden_dims: [128, 64]
   dropout: 0.2
 
 deephit:
@@ -19,10 +19,10 @@ deephit:
   max_rank_pairs: null
 
 training:
-  batch_size: 512
+  batch_size: 4096
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 30
+  epochs: 50
 
 early_stopping:
   enabled: true

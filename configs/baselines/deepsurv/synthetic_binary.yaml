@@ -7,14 +7,14 @@ dataset:
 
 model:
   name: DeepSurv
-  hidden_dims: [64, 32]
+  hidden_dims: [128, 64]
   dropout: 0.2
 
 training:
-  batch_size: 512
+  batch_size: 4096
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 75
+  epochs: 50
 
 early_stopping:
   enabled: true

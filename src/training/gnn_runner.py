@@ -5,10 +5,11 @@ from torch_geometric.loader import NeighborLoader
 from src.losses import CoxPHLoss, DeepHitLoss
 from src.evaluation import c_index, event_specific_c_index
 from src.ssl.label_masks import make_limited_label_masks
+from src.training.risk_utils import deephit_expected_time_risk_torch
 
 def predict_gnn_deephit_risk(model, data, mask, device):
     """
-    Binary GNN-DeepHit risk:
+    Binary / any-event GNN-DeepHit risk:
     risk = - expected event time bin
     """
     model.eval()
@@ -16,20 +17,7 @@ def predict_gnn_deephit_risk(model, data, mask, device):
     with torch.no_grad():
         logits = model(data.x, data.edge_index)
         logits = logits[mask]
-
-        probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
-        probs = probs.view_as(logits)
-
-        event_probs = probs[:, 0, :]
-
-        time_bins = torch.arange(
-            event_probs.shape[1],
-            device=device,
-            dtype=torch.float32,
-        )
-
-        expected_time = (event_probs * time_bins).sum(dim=1)
-        risk = -expected_time
+        risk = deephit_expected_time_risk_torch(logits, event_id="any")
 
     return risk.detach().cpu().numpy()
 
@@ -37,28 +25,15 @@ def predict_gnn_deephit_risk(model, data, mask, device):
 def predict_gnn_deephit_event_risk(model, data, mask, event_id, device):
     """
     Event-specific GNN-DeepHit risk.
+
+    event_id uses original labels: 1, 2, ..., K
     """
     model.eval()
-
-    event_channel = event_id - 1
 
     with torch.no_grad():
         logits = model(data.x, data.edge_index)
         logits = logits[mask]
-
-        probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
-        probs = probs.view_as(logits)
-
-        event_probs = probs[:, event_channel, :]
-
-        time_bins = torch.arange(
-            event_probs.shape[1],
-            device=device,
-            dtype=torch.float32,
-        )
-
-        expected_time = (event_probs * time_bins).sum(dim=1)
-        risk = -expected_time
+        risk = deephit_expected_time_risk_torch(logits, event_id=event_id)
 
     return risk.detach().cpu().numpy()
 
@@ -376,9 +351,9 @@ def train_gnn_deephit(
         logits = model(data.x, data.edge_index)
 
         loss = loss_fn(
-            logits[data.train_mask],
-            data.time_bin[data.train_mask],
-            data.event[data.train_mask],
+            logits=logits[data.train_mask],
+            event=data.event[data.train_mask],
+            time_bin=data.time_bin[data.train_mask],
         )
 
         loss.backward()
@@ -569,11 +544,10 @@ def train_gnn_deephit_sampled(
             seed_n = batch.batch_size
 
             loss = loss_fn(
-                logits[:seed_n],
-                batch.time_bin[:seed_n],
-                batch.event[:seed_n],
+                logits=logits[:seed_n],
+                event=batch.event[:seed_n],
+                time_bin=batch.time_bin[:seed_n],
             )
-
             loss.backward()
             optimizer.step()
 

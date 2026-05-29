@@ -11,13 +11,13 @@ model:
   dropout: 0.2
 
 training:
-  batch_size: 1024
+  batch_size: 8192
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 10
+  epochs: 50
 
 early_stopping:
-  enabled: false
+  enabled: true
   monitor: val_cindex
   mode: max
   patience: 5

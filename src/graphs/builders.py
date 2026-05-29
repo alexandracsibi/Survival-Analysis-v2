@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
+SUPPORTED_KNN_METRICS = {"euclidean", "cosine"}
 
 def build_knn_graph(
     X,
@@ -18,11 +19,22 @@ def build_knn_graph(
     edge_index[0] = source nodes
     edge_index[1] = target nodes
     """
+    X = np.asarray(X, dtype=np.float32)
 
-    X = np.asarray(X)
+    if X.ndim != 2:
+        raise ValueError(f"Expected X with shape [N, F], got {tuple(X.shape)}")
+
+    if not np.isfinite(X).all():
+        raise ValueError("X contains NaN or infinite values. Graph construction requires finite features.")
 
     if k <= 0:
         raise ValueError("k must be positive.")
+    
+    if metric not in SUPPORTED_KNN_METRICS:
+        raise ValueError(
+            f"Unsupported metric {metric!r}. "
+            f"Supported metrics are: {sorted(SUPPORTED_KNN_METRICS)}"
+        )
 
     n_nodes = X.shape[0]
 

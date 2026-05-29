@@ -5,6 +5,11 @@ dataset:
   name: synthetic_binary
   data_root: data
 
+model:
+  name: GraphSAGECox
+  hidden_dims: [128, 64]
+  dropout: 0.2
+
 graph:
   k: 10
   metric: euclidean
@@ -12,24 +17,28 @@ graph:
   make_undirected: true
   edge_index_path: data/synthetic_binary/graphs/knn_k10_euclidean_edge_index.npy
 
-sampling:
-  enabled: true
-  batch_size: 4096
-  num_neighbors: [5, 5]
+  preprocessing_note: >
+    Graph is built from the prepared synthetic_binary feature matrix loaded from
+    X_train, X_val, and X_test. These arrays are already in the final prepared
+    feature format. The graph uses only X features and no labels, event times,
+    outcomes, or model predictions.
 
-model:
-  name: GraphSAGECox
-  hidden_dims: [128, 64]
-  dropout: 0.2
+  included_feature_groups:
+    - synthetic numerical features
+
+  dropped_feature_groups: null
+
+sampling:
+  enabled: false
 
 training:
   lr: 0.001
   weight_decay: 0.0001
-  epochs: 75
+  epochs: 50
 
 early_stopping:
   enabled: true
   monitor: val_cindex
   mode: max
-  patience: 5
+  patience: 6
   min_delta: 0.0001

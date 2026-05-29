@@ -52,6 +52,153 @@ def event_specific_c_index(time, event, risk_score, event_id: int):
         risk_score=risk_score,
     )
 
+def deephit_expected_time_risk(probs, event_id=None):
+    """
+    DeepHit risk score based on negative expected event-time bin.
+
+    probs:
+        [N, K, T] joint event-time probabilities
+
+    event_id:
+        None for binary/any-event risk using all events.
+        Integer event id using 1-based survival labels for competing risks.
+
+    Returns:
+        risk [N], where higher = higher risk.
+    """
+    probs = np.asarray(probs, dtype=float)
+
+    if probs.ndim != 3:
+        raise ValueError(f"Expected probs [N, K, T], got {probs.shape}")
+
+    n, k, t = probs.shape
+    time_idx = np.arange(t, dtype=float)
+
+    if event_id is None or event_id == "any":
+        time_probs = probs.sum(axis=1)  # [N, T]
+    else:
+        event_idx = int(event_id) - 1
+        if event_idx < 0 or event_idx >= k:
+            raise ValueError(f"event_id={event_id} is invalid for K={k}")
+        time_probs = probs[:, event_idx, :]  # [N, T]
+
+    total_prob = time_probs.sum(axis=1)
+    expected_time = (time_probs * time_idx).sum(axis=1) / np.clip(total_prob, 1e-8, None)
+
+    risk = -expected_time
+    return risk
+
+
+def deephit_total_event_probability_risk(probs, event_id=None):
+    """
+    DeepHit risk score based on total predicted event probability.
+
+    probs:
+        [N, K, T] joint event-time probabilities
+
+    event_id:
+        None or "any" for total probability of any event.
+        Integer event id using 1-based survival labels for competing risks.
+
+    Returns:
+        risk [N], where higher = higher risk.
+    """
+    probs = np.asarray(probs, dtype=float)
+
+    if probs.ndim != 3:
+        raise ValueError(f"Expected probs [N, K, T], got {probs.shape}")
+
+    _, k, _ = probs.shape
+
+    if event_id is None or event_id == "any":
+        return probs.sum(axis=(1, 2))
+
+    event_idx = int(event_id) - 1
+    if event_idx < 0 or event_idx >= k:
+        raise ValueError(f"event_id={event_id} is invalid for K={k}")
+
+    return probs[:, event_idx, :].sum(axis=1)
+
+
+def deephit_early_event_probability_risk(
+    probs,
+    early_time_bin=None,
+    early_fraction=0.25,
+    event_id=None,
+):
+    """
+    DeepHit risk score based on early event probability.
+
+    probs:
+        [N, K, T] joint event-time probabilities
+
+    early_time_bin:
+        Last included time-bin index. If None, uses early_fraction.
+
+    early_fraction:
+        Fraction of time bins considered early when early_time_bin is None.
+
+    event_id:
+        None or "any" for early probability of any event.
+        Integer event id using 1-based survival labels for competing risks.
+
+    Returns:
+        risk [N], where higher = higher early-event risk.
+    """
+    probs = np.asarray(probs, dtype=float)
+
+    if probs.ndim != 3:
+        raise ValueError(f"Expected probs [N, K, T], got {probs.shape}")
+
+    _, k, t = probs.shape
+
+    if early_time_bin is None:
+        early_time_bin = max(0, int(np.ceil(t * early_fraction)) - 1)
+
+    early_time_bin = int(early_time_bin)
+    early_time_bin = min(max(early_time_bin, 0), t - 1)
+
+    if event_id is None or event_id == "any":
+        return probs[:, :, : early_time_bin + 1].sum(axis=(1, 2))
+
+    event_idx = int(event_id) - 1
+    if event_idx < 0 or event_idx >= k:
+        raise ValueError(f"event_id={event_id} is invalid for K={k}")
+
+    return probs[:, event_idx, : early_time_bin + 1].sum(axis=1)
+
+
+def deephit_risk_scores(
+    probs,
+    event_id=None,
+    early_time_bin=None,
+    early_fraction=0.25,
+):
+    """
+    Return all DeepHit risk-score variants.
+
+    Returned keys:
+    - expected_time
+    - total_event_probability
+    - early_event_probability
+    """
+    return {
+        "expected_time": deephit_expected_time_risk(
+            probs=probs,
+            event_id=event_id,
+        ),
+        "total_event_probability": deephit_total_event_probability_risk(
+            probs=probs,
+            event_id=event_id,
+        ),
+        "early_event_probability": deephit_early_event_probability_risk(
+            probs=probs,
+            early_time_bin=early_time_bin,
+            early_fraction=early_fraction,
+            event_id=event_id,
+        ),
+    }
+
 def make_survival_array(time, event):
     """
     Create scikit-survival structured array.

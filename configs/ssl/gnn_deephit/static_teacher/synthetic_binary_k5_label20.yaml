@@ -5,21 +5,9 @@ dataset:
   name: synthetic_binary
   data_root: data
 
-graph:
-  k: 5
-  metric: euclidean
-  include_self: false
-  make_undirected: true
-  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
-
-sampling:
-  enabled: true
-  batch_size: 4096
-  num_neighbors: [5, 5]
-
 model:
   name: GraphSAGEDeepHit
-  hidden_dims: [64, 32]
+  hidden_dims: [128, 64]
   dropout: 0.2
 
 deephit:
@@ -30,26 +18,52 @@ deephit:
   sigma: 0.1
   max_rank_pairs: null
 
+graph:
+  k: 5
+  metric: euclidean
+  include_self: false
+  make_undirected: true
+  edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
+
+  preprocessing_note: >
+    Graph is built from the prepared synthetic_binary feature matrix loaded from
+    X_train, X_val, and X_test. These arrays are already in the final prepared
+    feature format. The graph uses only X features and no labels, event times,
+    outcomes, or model predictions.
+
+  included_feature_groups:
+    - synthetic numerical features
+
+  dropped_feature_groups: null
+
+sampling:
+  enabled: false
+
+ssl:
+  enabled: true
+  method: static_teacher_pseudo_labeling
+  teacher_mode: static
+  pseudo_label_update: once
+  enforce_censoring_consistency: true
+
+  teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5_label20.pt
+  init_student_from_teacher: true
+
+  pseudo_weight: 0.2
+  min_confidence: 0.1
+  candidate: censored_unlabeled_train
+
 training:
-  lr: 0.0005
+  lr: 0.001
   weight_decay: 0.0001
-  epochs: 50
+  epochs: 75
 
 early_stopping:
   enabled: true
   monitor: val_cindex
   mode: max
-  patience: 5
+  patience: 6
   min_delta: 0.0001
-
-ssl:
-  enabled: true
-  method: static_teacher_pseudo_labeling
-  teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5_label20.pt
-  init_student_from_teacher: true
-  pseudo_weight: 0.2
-  min_confidence: 0.1
-  candidate: censored_train
 
 semi_supervised:
   enabled: true

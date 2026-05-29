@@ -6,6 +6,10 @@ from src.losses import CoxPHLoss
 from src.evaluation import c_index, event_specific_c_index
 from src.losses import CoxPHLoss, DeepHitLoss
 
+from src.training.risk_utils import (
+    deephit_expected_time_risk_torch,
+    deephit_expected_time_risks_all_torch,
+)
 
 def make_dataloader(X, time, event, batch_size=512, shuffle=True):
     event_binary = (event != 0).astype("int64")
@@ -56,10 +60,8 @@ def predict_risk(model, X, device, batch_size=4096):
 
 def predict_deephit_risk(model, X, device, batch_size=4096):
     """
-    Binary DeepHit risk score:
+    Binary / any-event DeepHit risk score:
     risk = - expected event time bin
-
-    Higher risk means earlier predicted event.
     """
     model.eval()
 
@@ -73,23 +75,8 @@ def predict_deephit_risk(model, X, device, batch_size=4096):
     with torch.no_grad():
         for xb in loader:
             xb = xb.to(device)
-
-            logits = model(xb)  # [B, K, T]
-            probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
-            probs = probs.view_as(logits)
-
-            # For binary DeepHit, K = 1
-            event_probs = probs[:, 0, :]  # [B, T]
-
-            time_bins = torch.arange(
-                event_probs.shape[1],
-                device=device,
-                dtype=torch.float32,
-            )
-
-            expected_time = (event_probs * time_bins).sum(dim=1)
-            risk = -expected_time
-
+            logits = model(xb)
+            risk = deephit_expected_time_risk_torch(logits, event_id="any")
             risks.append(risk.cpu().numpy())
 
     return np.concatenate(risks)
@@ -98,15 +85,11 @@ def predict_deephit_event_risk(model, X, event_id, device, batch_size=4096):
     """
     Event-specific DeepHit risk score.
 
-    risk = - expected event time for selected event type.
     event_id uses original labels: 1, 2, ..., K
     """
-
     model.eval()
 
     risks = []
-    event_channel = event_id - 1
-
     loader = DataLoader(
         torch.tensor(X, dtype=torch.float32),
         batch_size=batch_size,
@@ -116,22 +99,8 @@ def predict_deephit_event_risk(model, X, event_id, device, batch_size=4096):
     with torch.no_grad():
         for xb in loader:
             xb = xb.to(device)
-
             logits = model(xb)
-            probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
-            probs = probs.view_as(logits)
-
-            event_probs = probs[:, event_channel, :]
-
-            time_bins = torch.arange(
-                event_probs.shape[1],
-                device=device,
-                dtype=torch.float32,
-            )
-
-            expected_time = (event_probs * time_bins).sum(dim=1)
-            risk = -expected_time
-
+            risk = deephit_expected_time_risk_torch(logits, event_id=event_id)
             risks.append(risk.cpu().numpy())
 
     return np.concatenate(risks)
@@ -142,12 +111,10 @@ def predict_deephit_event_risks_all(model, X, device, batch_size=4096):
 
     Returns:
         risks: [N, K]
-        risk[:, k] = - expected event time for event channel k
     """
     model.eval()
 
     all_risks = []
-
     loader = DataLoader(
         torch.tensor(X, dtype=torch.float32),
         batch_size=batch_size,
@@ -157,23 +124,8 @@ def predict_deephit_event_risks_all(model, X, device, batch_size=4096):
     with torch.no_grad():
         for xb in loader:
             xb = xb.to(device)
-
-            logits = model(xb)  # [B, K, T]
-            probs = torch.softmax(logits.view(logits.shape[0], -1), dim=1)
-            probs = probs.view_as(logits)
-
-            B, K, T = probs.shape
-
-            time_bins = torch.arange(
-                T,
-                device=device,
-                dtype=torch.float32,
-            )
-
-            expected_time = (probs * time_bins.view(1, 1, T)).sum(dim=2)  # [B, K]
-
-            risk = -expected_time  # [B, K]
-
+            logits = model(xb)
+            risk = deephit_expected_time_risks_all_torch(logits)
             all_risks.append(risk.cpu().numpy())
 
     return np.concatenate(all_risks, axis=0)

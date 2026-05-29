@@ -1,0 +1,69 @@
+seed: 42
+device: auto
+
+dataset:
+  name: SEER
+  data_root: data
+
+graph:
+  k: 5
+  metric: euclidean
+  include_self: false
+  make_undirected: true
+  edge_index_path: data/SEER/graphs/knn_k5_euclidean_edge_index.npy
+
+  preprocessing_note: >
+    Graph is built from the prepared SEER feature matrix loaded from X_train,
+    X_val, and X_test after preprocessing/scaling/encoding. The graph uses only
+    X features and no labels, event times, outcomes, or model predictions.
+
+  included_feature_groups:
+    - numeric features
+    - missing-indicator features
+    - categorical encoded features
+
+  dropped_feature_groups: null
+
+sampling:
+  enabled: true
+  batch_size: 8192
+  num_neighbors: [10, 10]
+
+model:
+  name: GraphSAGEDeepHit
+  hidden_dims: [128, 64]
+  dropout: 0.2
+
+deephit:
+  n_time_bins: 50
+  binning: quantile
+  alpha: 1.0
+  beta: 0.0
+  sigma: 0.1
+  max_rank_pairs: null
+
+ssl:
+  enabled: true
+  method: static_teacher_pseudo_labeling
+  teacher_mode: static
+  pseudo_label_update: once
+  enforce_censoring_consistency: true
+
+  teacher_checkpoint: results/checkpoints/gnn/deephit/seer.pt
+  init_student_from_teacher: true
+
+  pseudo_weight: 0.2
+  min_confidence: 0.1
+  candidate: censored_train
+
+training:
+  lr: 0.001
+  weight_decay: 0.0001
+  epochs: 50
+
+early_stopping:
+  enabled: true
+  monitor: val_cindex
+  mode: max
+  patience: 6
+  min_delta: 0.0001

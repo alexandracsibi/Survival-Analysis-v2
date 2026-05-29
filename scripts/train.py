@@ -164,6 +164,14 @@ def main():
 
             teacher_checkpoint = config["ssl"].get("teacher_checkpoint")
 
+            teacher_mode = config["ssl"].get("teacher_mode", "static")
+            pseudo_label_update = config["ssl"].get("pseudo_label_update", "once")
+            enforce_censoring_consistency = config["ssl"].get(
+                "enforce_censoring_consistency",
+                True,
+            )
+            candidate = config["ssl"].get("candidate", "censored_train")
+
             if teacher_checkpoint is not None and config["ssl"].get("init_student_from_teacher", True):
                 teacher_checkpoint_path = PROJECT_ROOT / teacher_checkpoint
                 state_dict = torch.load(teacher_checkpoint_path, map_location="cpu", weights_only=True)
@@ -191,6 +199,10 @@ def main():
                     pseudo_weight=config["ssl"]["pseudo_weight"],
                     min_confidence=config["ssl"]["min_confidence"],
                     teacher_checkpoint_path=teacher_checkpoint_path,
+                    teacher_mode=teacher_mode,
+                    pseudo_label_update=pseudo_label_update,
+                    enforce_censoring_consistency=enforce_censoring_consistency,
+                    candidate=candidate,
                     semi_supervised=config.get("semi_supervised"),
                     patience=config["early_stopping"]["patience"],
                     min_delta=config["early_stopping"]["min_delta"],
@@ -208,6 +220,10 @@ def main():
                     pseudo_weight=config["ssl"]["pseudo_weight"],
                     min_confidence=config["ssl"]["min_confidence"],
                     teacher_checkpoint_path=teacher_checkpoint_path,
+                    teacher_mode=teacher_mode,
+                    pseudo_label_update=pseudo_label_update,
+                    enforce_censoring_consistency=enforce_censoring_consistency,
+                    candidate=candidate,
                     patience=config["early_stopping"]["patience"],
                     min_delta=config["early_stopping"]["min_delta"],
                     device=device,
@@ -272,6 +288,33 @@ def main():
     checkpoint_path = checkpoint_dir / f"{experiment_name}.pt"
     torch.save(model.state_dict(), checkpoint_path)
 
+    graph_metadata_path = None
+
+    if config.get("graph") is not None:
+        edge_index_path = Path(config["graph"]["edge_index_path"])
+        graph_metadata_path = str(
+            edge_index_path.with_name(
+                edge_index_path.name.replace("_edge_index.npy", "_metadata.json")
+            )
+        )
+
+    ssl_enabled = config.get("ssl", {}).get("enabled", False)
+
+    pseudo_label_stats = None
+    selected_pseudo = None
+
+    if ssl_enabled:
+        selected_pseudo = int(pseudo.selected_mask.sum().item())
+
+        pseudo_label_stats = {
+            "selected_pseudo": selected_pseudo,
+            "total_nodes": int(pseudo.selected_mask.shape[0]),
+            "selection_rate": float(pseudo.selected_mask.float().mean().item()),
+            "mean_confidence": float(pseudo.confidence.mean().item()),
+            "max_confidence": float(pseudo.confidence.max().item()),
+            "min_confidence": float(pseudo.confidence.min().item()),
+        }
+
     metadata_path = table_dir / f"{experiment_name}_metadata.json"
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump({
@@ -279,11 +322,20 @@ def main():
             "n_features": ds["n_features"],
             "feature_names": ds["feature_names"],
             "model_name": model_name,
+
             "graph": config.get("graph"),
+            "graph_metadata_path": graph_metadata_path,
+
             "ssl": config.get("ssl"),
-            "selected_pseudo": int(pseudo.selected_mask.sum().item()) if config.get("ssl", {}).get("enabled", False) else None,
+            "selected_pseudo": selected_pseudo,
+            "pseudo_label_stats": pseudo_label_stats,
+
             "n_time_bins": ds.get("n_time_bins"),
-            "time_bin_edges": ds.get("time_bin_edges").tolist() if ds.get("time_bin_edges") is not None else None,
+            "time_bin_edges": (
+                ds.get("time_bin_edges").tolist()
+                if ds.get("time_bin_edges") is not None
+                else None
+            ),
         }, f, indent=2)
 
     # Save config copy

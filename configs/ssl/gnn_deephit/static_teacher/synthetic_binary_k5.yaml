@@ -12,6 +12,17 @@ graph:
   make_undirected: true
   edge_index_path: data/synthetic_binary/graphs/knn_k5_euclidean_edge_index.npy
 
+  preprocessing_note: >
+    Graph is built from the prepared synthetic_binary feature matrix loaded from
+    X_train, X_val, and X_test. These arrays are already in the final prepared
+    feature format. The graph uses only X features and no labels, event times,
+    outcomes, or model predictions.
+
+  included_feature_groups:
+    - synthetic numerical features
+
+  dropped_feature_groups: null
+
 sampling:
   enabled: true
   batch_size: 4096
@@ -45,6 +56,9 @@ early_stopping:
 ssl:
   enabled: true
   method: static_teacher_pseudo_labeling
+  teacher_mode: static
+  pseudo_label_update: once
+  enforce_censoring_consistency: true
   teacher_checkpoint: results/checkpoints/gnn/deephit/synthetic_binary_k5.pt
   init_student_from_teacher: true
   pseudo_weight: 0.2

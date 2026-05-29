@@ -13,21 +13,8 @@ from src.ssl.pseudo_labeling import (
     deephit_pseudo_label_loss,
 )
 from src.ssl.label_masks import make_limited_label_masks
+from src.training.risk_utils import deephit_expected_time_risk_torch
 
-
-def _deephit_expected_time_risk(logits: torch.Tensor) -> torch.Tensor:
-    """Return binary DeepHit risk as negative expected event time."""
-    n, k, t = logits.shape
-
-    probs = torch.softmax(logits.reshape(n, k * t), dim=1).reshape(n, k, t)
-
-    time_idx = torch.arange(t, device=logits.device).float()
-    time_probs = probs.sum(dim=1)
-
-    expected_time = (time_probs * time_idx).sum(dim=1)
-    risk = -expected_time
-
-    return risk
 
 def _create_static_teacher_from_checkpoint(
     model,
@@ -49,6 +36,45 @@ def _create_static_teacher_from_checkpoint(
 
     return teacher
 
+def _make_ssl_candidate_mask(
+    candidate: str,
+    event: torch.Tensor,
+    train_mask: torch.Tensor,
+    unlabeled_train_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """
+    Build candidate mask for pseudo-label generation.
+
+    Supported candidates:
+    - censored_train:
+        censored samples inside the training split
+
+    - censored_unlabeled_train:
+        censored samples inside the limited-label unlabeled train mask
+    """
+    if candidate == "censored_train":
+        return make_censored_candidate_mask(
+            event=event,
+            train_mask=train_mask,
+        )
+
+    if candidate == "censored_unlabeled_train":
+        if unlabeled_train_mask is None:
+            raise ValueError(
+                "candidate='censored_unlabeled_train' requires unlabeled_train_mask, "
+                "but semi_supervised is not enabled."
+            )
+
+        return make_censored_candidate_mask(
+            event=event,
+            train_mask=unlabeled_train_mask,
+        )
+
+    raise ValueError(
+        f"Unsupported SSL candidate={candidate!r}. "
+        "Supported values are: 'censored_train', 'censored_unlabeled_train'."
+    )
+
 
 def train_gnn_deephit_ssl_static_teacher(
     model,
@@ -61,6 +87,10 @@ def train_gnn_deephit_ssl_static_teacher(
     pseudo_weight: float = 0.2,
     min_confidence: float = 0.7,
     teacher_checkpoint_path=None,
+    teacher_mode: str = "static",
+    pseudo_label_update: str = "once",
+    enforce_censoring_consistency: bool = True,
+    candidate: str = "censored_train",
     patience: int = 10,
     min_delta: float = 0.0001,
     device: str = "cpu",
@@ -77,6 +107,16 @@ def train_gnn_deephit_ssl_static_teacher(
     if device == "cuda":
         print("CUDA allocated GB:", torch.cuda.memory_allocated() / 1024**3)
 
+    if teacher_mode != "static":
+        raise ValueError(
+            f"Only teacher_mode='static' is currently supported, got {teacher_mode!r}."
+        )
+
+    if pseudo_label_update != "once":
+        raise ValueError(
+            f"Only pseudo_label_update='once' is currently supported, got {pseudo_label_update!r}."
+        )
+
     teacher = _create_static_teacher_from_checkpoint(
         model=model,
         teacher_checkpoint_path=teacher_checkpoint_path,
@@ -84,7 +124,8 @@ def train_gnn_deephit_ssl_static_teacher(
     )
     deephit_loss = DeepHitLoss(alpha=alpha, beta=beta, sigma=sigma)
 
-    candidate_mask = make_censored_candidate_mask(
+    candidate_mask = _make_ssl_candidate_mask(
+        candidate=candidate,
         event=data.event,
         train_mask=data.train_mask,
     )
@@ -95,6 +136,7 @@ def train_gnn_deephit_ssl_static_teacher(
         candidate_mask=candidate_mask,
         min_confidence=min_confidence,
         device=device,
+        enforce_censoring_consistency=enforce_censoring_consistency,
     )
 
     history = []
@@ -136,7 +178,7 @@ def train_gnn_deephit_ssl_static_teacher(
         model.eval()
         with torch.no_grad():
             logits = model(data.x, data.edge_index)
-            risk = _deephit_expected_time_risk(logits)
+            risk = deephit_expected_time_risk_torch(logits, event_id="any")
 
             val_time = data.time[data.val_mask].detach().cpu().numpy()
             val_event = (data.event[data.val_mask] != 0).long().detach().cpu().numpy()
@@ -155,6 +197,10 @@ def train_gnn_deephit_ssl_static_teacher(
             "pseudo_loss": float(pseudo_loss.item()),
             "val_cindex": float(val_cindex),
             "selected_pseudo": selected_pseudo,
+            "teacher_mode": teacher_mode,
+            "pseudo_label_update": pseudo_label_update,
+            "enforce_censoring_consistency": enforce_censoring_consistency,
+            "candidate": candidate,
         }
         history.append(row)
 
@@ -195,6 +241,10 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
     pseudo_weight: float = 0.2,
     min_confidence: float = 0.02,
     teacher_checkpoint_path=None,
+    teacher_mode: str = "static",
+    pseudo_label_update: str = "once",
+    enforce_censoring_consistency: bool = True,
+    candidate: str = "censored_train",
     semi_supervised=None,
     patience: int = 10,
     min_delta: float = 0.0001,
@@ -202,6 +252,16 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
 ):
     data = data.to(device)
     model = model.to(device)
+
+    if teacher_mode != "static":
+        raise ValueError(
+            f"Only teacher_mode='static' is currently supported, got {teacher_mode!r}."
+        )
+
+    if pseudo_label_update != "once":
+        raise ValueError(
+            f"Only pseudo_label_update='once' is currently supported, got {pseudo_label_update!r}."
+        )    
 
     teacher = _create_static_teacher_from_checkpoint(
         model=model,
@@ -223,14 +283,17 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
 
         print("Limited-label stats:", label_stats)
 
-        candidate_mask = make_censored_candidate_mask(
+        candidate_mask = _make_ssl_candidate_mask(
+            candidate=candidate,
             event=data.event,
-            train_mask=unlabeled_train_mask,
+            train_mask=data.train_mask,
+            unlabeled_train_mask=unlabeled_train_mask,
         )
     else:
         supervised_mask = data.train_mask
 
-        candidate_mask = make_censored_candidate_mask(
+        candidate_mask = _make_ssl_candidate_mask(
+            candidate=candidate,
             event=data.event,
             train_mask=data.train_mask,
         )
@@ -241,6 +304,7 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
         candidate_mask=candidate_mask,
         min_confidence=min_confidence,
         device=device,
+        enforce_censoring_consistency=enforce_censoring_consistency,
     )
 
     selected_pseudo = int(pseudo.selected_mask.sum().item())
@@ -276,9 +340,9 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
             seed_n = batch.batch_size
 
             supervised_loss = deephit_loss(
-                logits[:seed_n],
-                batch.time_bin[:seed_n],
-                batch.event[:seed_n],
+                logits=logits[:seed_n],
+                event=batch.event[:seed_n],
+                time_bin=batch.time_bin[:seed_n],
             )
 
             global_node_ids = batch.n_id[:seed_n]
@@ -306,7 +370,7 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
         model.eval()
         with torch.no_grad():
             logits = model(data.x, data.edge_index)
-            risk = _deephit_expected_time_risk(logits)
+            risk = deephit_expected_time_risk_torch(logits, event_id="any")
 
             val_time = data.time[data.val_mask].detach().cpu().numpy()
             event_binary = (data.event[data.val_mask] != 0).long().detach().cpu().numpy()
@@ -329,6 +393,10 @@ def train_gnn_deephit_ssl_static_teacher_sampled(
             "val_cindex": float(val_cindex),
             "selected_pseudo": selected_pseudo,
             "batches": n_batches,
+            "teacher_mode": teacher_mode,
+            "pseudo_label_update": pseudo_label_update,
+            "enforce_censoring_consistency": enforce_censoring_consistency,
+            "candidate": candidate,
         }
         history.append(row)
 
