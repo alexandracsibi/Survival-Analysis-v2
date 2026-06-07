@@ -26,8 +26,8 @@ graph:
 
 sampling:
   enabled: true
-  batch_size: 8192
-  num_neighbors: [10, 10]
+  batch_size: 4096
+  num_neighbors: [5, 5]
 
 model:
   name: GraphSAGEDeepHit
@@ -49,11 +49,11 @@ ssl:
   pseudo_label_update: once
   enforce_censoring_consistency: true
 
-  teacher_checkpoint: results/checkpoints/gnn/deephit/seer.pt
+  teacher_checkpoint: results/checkpoints/gnn/deephit/seer_label20.pt
   init_student_from_teacher: true
 
-  pseudo_weight: 0.2
-  min_confidence: 0.1
+  pseudo_weight: 0.1
+  min_confidence: 0.2
   candidate: censored_train
 
 training:

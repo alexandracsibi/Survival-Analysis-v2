@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
 
 SUPPORTED_KNN_METRICS = {"euclidean", "cosine"}
 
@@ -9,6 +10,7 @@ def build_knn_graph(
     metric: str = "euclidean",
     include_self: bool = False,
     make_undirected: bool = True,
+    batch_size: int = 100_000,
 ):
     """
     Build a kNN graph from feature matrix X.
@@ -51,35 +53,62 @@ def build_knn_graph(
     )
     nbrs.fit(X)
 
-    _, indices = nbrs.kneighbors(X)
+    src_parts = []
+    dst_parts = []
 
-    src_matrix = np.repeat(np.arange(n_nodes, dtype=np.int64)[:, None], n_neighbors, axis=1)
-    dst_matrix = indices.astype(np.int64, copy=False)
+    print("Querying nearest neighbors in batches...")
 
-    if include_self:
-        src = src_matrix.reshape(-1)
-        dst = dst_matrix.reshape(-1)
-    else:
-        # Robust selection: remove self-neighbors row-wise and keep the first k remaining neighbors.
-        # This avoids the previous reshape bug when some rows had k neighbors and others had k+1.
-        non_self = dst_matrix != src_matrix
-        rank = np.cumsum(non_self, axis=1)
-        keep = non_self & (rank <= k)
+    for start in tqdm(range(0, n_nodes, batch_size)):
+        print(f"Processing nodes {start:,} to {min(start + batch_size, n_nodes):,} / {n_nodes:,}", flush=True)
+        end = min(start + batch_size, n_nodes)
 
-        src = src_matrix[keep]
-        dst = dst_matrix[keep]
+        _, indices = nbrs.kneighbors(X[start:end])
+
+        batch_n = end - start
+        src_matrix = np.repeat(
+            np.arange(start, end, dtype=np.int64)[:, None],
+            n_neighbors,
+            axis=1,
+        )
+        dst_matrix = indices.astype(np.int64, copy=False)
+
+        if include_self:
+            src = src_matrix.reshape(-1)
+            dst = dst_matrix.reshape(-1)
+        else:
+            non_self = dst_matrix != src_matrix
+            rank = np.cumsum(non_self, axis=1)
+            keep = non_self & (rank <= k)
+
+            src = src_matrix[keep]
+            dst = dst_matrix[keep]
+
+        src_parts.append(src)
+        dst_parts.append(dst)
+
+    src = np.concatenate(src_parts)
+    dst = np.concatenate(dst_parts)
 
     edge_index = np.stack([src, dst], axis=0).astype(np.int64, copy=False)
 
     if make_undirected:
-        reverse_edge_index = edge_index[[1, 0], :]
-        edge_index = np.concatenate([edge_index, reverse_edge_index], axis=1)
+        print("Making graph undirected...")
 
-        # Faster than np.unique(edge_index, axis=1) for large graphs.
-        # It removes duplicate edges after making the graph undirected.
-        edge_tuples = edge_index.T
-        edge_tuples = np.ascontiguousarray(edge_tuples)
-        edge_tuples = np.unique(edge_tuples, axis=0)
-        edge_index = edge_tuples.T.astype(np.int64, copy=False)
+        src = edge_index[0]
+        dst = edge_index[1]
+
+        rev_src = dst
+        rev_dst = src
+
+        all_src = np.concatenate([src, rev_src])
+        all_dst = np.concatenate([dst, rev_dst])
+
+        print("Removing duplicate edges...")
+
+        edges = np.stack([all_src, all_dst], axis=1)
+        edges = np.ascontiguousarray(edges)
+        edges = np.unique(edges, axis=0)
+
+        edge_index = edges.T.astype(np.int64, copy=False)
 
     return edge_index

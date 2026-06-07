@@ -28,6 +28,7 @@ def main():
     metric = graph_config.get("metric", "euclidean")
     include_self = graph_config.get("include_self", False)
     make_undirected = graph_config.get("make_undirected", True)
+    batch_size = graph_config.get("batch_size", 100_000)
 
     ds = load_dataset(dataset_name, data_root=data_root)
 
@@ -60,6 +61,7 @@ def main():
         metric=metric,
         include_self=include_self,
         make_undirected=make_undirected,
+        batch_size=batch_size,
     )
 
     out_dir = PROJECT_ROOT / "data" / dataset_name / "graphs"

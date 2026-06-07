@@ -177,6 +177,16 @@ def main():
     )
 
     model_name = config["model"]["name"]
+    event_mode = config.get("dataset", {}).get("event_mode")
+
+    if event_mode == "binary_any_event":
+        for split in ["train", "val", "test"]:
+            if split in ds:
+                ds[split]["event"] = (ds[split]["event"] != 0).astype("int64")
+
+        ds["n_events"] = 1
+        ds["is_competing"] = False
+        ds["unique_events"] = [0, 1]
 
     if model_name == "DeepHit" or model_name == "GraphSAGEDeepHit":
         from src.datasets.loaders import add_time_bins

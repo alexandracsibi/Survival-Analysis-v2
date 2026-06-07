@@ -147,6 +147,17 @@ def main():
             )
 
     elif model_name == "GraphSAGEDeepHit":
+        event_mode = config.get("dataset", {}).get("event_mode")
+
+        if event_mode == "binary_any_event":
+            for split in ["train", "val", "test"]:
+                if split in ds:
+                    ds[split]["event"] = (ds[split]["event"] != 0).astype("int64")
+
+            ds["n_events"] = 1
+            ds["is_competing"] = False
+            ds["unique_events"] = [0, 1]
+
         ds = add_time_bins(
             ds,
             n_time_bins=config["deephit"]["n_time_bins"],

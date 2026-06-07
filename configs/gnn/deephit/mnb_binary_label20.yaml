@@ -4,6 +4,7 @@ device: auto
 dataset:
   name: MNB
   data_root: data
+  event_mode: binary_any_event
 
 model:
   name: GraphSAGEDeepHit
@@ -13,8 +14,8 @@ model:
 deephit:
   n_time_bins: 50
   binning: quantile
-  alpha: 0.8
-  beta: 0.2
+  alpha: 1.0
+  beta: 0.0
   sigma: 0.1
   max_rank_pairs: null
 
@@ -28,16 +29,17 @@ graph:
 
   preprocessing_note: >
     Graph is built from the prepared MNB feature matrix loaded from X_train,
-    X_val, and X_test after preprocessing/scaling/encoding. The graph uses only
-    X features and no labels, event times, outcomes, or model predictions.
+    X_val, and X_test. These arrays are already in the final prepared feature
+    format. The graph uses only X features and no labels, event times, outcomes,
+    or model predictions.
 
   included_feature_groups:
-    - final numeric features
-    - retained categorical one-hot feature groups
+    - numerical features
+    - encoded categorical features
 
   dropped_feature_groups:
-    - BORROWER_COUNTY_*
-    - CONTRACT_LOAN_TYPE_*
+    - BORROWER_COUNTY
+    - CONTRACT_LOAN_TYPE
 
 sampling:
   enabled: true
@@ -51,7 +53,15 @@ training:
 
 early_stopping:
   enabled: true
-  monitor: val_mean_cindex
+  monitor: val_cindex
   mode: max
   patience: 6
   min_delta: 0.0001
+
+semi_supervised:
+  enabled: true
+  strategy: event_fraction
+  labeled_event_fraction: 0.2
+  min_labeled_events: 1000
+  keep_censored_in_supervised: true
+  seed: 42

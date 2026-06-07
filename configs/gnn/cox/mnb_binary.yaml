@@ -15,6 +15,7 @@ graph:
   metric: euclidean
   include_self: false
   make_undirected: true
+  batch_size: 100000
   edge_index_path: data/MNB/graphs/knn_k5_euclidean_edge_index.npy
 
   preprocessing_note: >
